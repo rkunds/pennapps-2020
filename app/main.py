@@ -1,27 +1,30 @@
-from flask import Flask, redirect, url_for, flash, render_template
-from flask_login import login_required, logout_user
-from config import Config
-from models import db, login_manager
-from oauth import blueprint
-from cli import create_db
+import base64
+from dotenv import load_dotenv
+from flask import Flask, request, url_for, redirect
+import os
+import requests
+import json
 
+load_dotenv()
 
 app = Flask(__name__)
-app.config.from_object(Config)
-app.register_blueprint(blueprint, url_prefix="/login")
-app.cli.add_command(create_db)
-db.init_app(app)
-login_manager.init_app(app)
 
 
-@app.route("/logout")
-@login_required
-def logout():
-    logout_user()
-    flash("You have logged out")
-    return redirect(url_for("index"))
+@app.route("/upload", methods=["POST"])
+def upload():
+    headers = {"app_id": os.environ["APP_ID"], "app_key": os.environ["APP_KEY"]}
+    payload = {
+        "src": f'data:image/jpg;base64,{base64.b64encode(request.files["file"].read()).decode()}'
+    }
 
+    mathpix = requests.post(
+        "https://api.mathpix.com/v3/text", headers=headers, json=payload
+    ).json()
 
-@app.route("/")
-def index():
-    return render_template("home.html")
+    r = requests.get(
+        f"https://latex.codecogs.com/png.latex?\\bg_white \\LARGE {mathpix['latex_styled']}"
+    )
+    with open(f"static/{mathpix['request_id']}.png", "wb") as f:
+        f.write(r.content)
+
+    return redirect(url_for("static", filename=f"{mathpix['request_id']}.png"))
